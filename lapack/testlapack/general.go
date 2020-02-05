@@ -131,8 +131,8 @@ func randomHessenberg(n, stride int, rnd *rand.Rand) blas64.General {
 // form, that is, block upper triangular with 1×1 and 2×2 diagonal blocks where
 // each 2×2 diagonal block has its diagonal elements equal and its off-diagonal
 // elements of opposite sign.
-func randomSchurCanonical(n, stride int, rnd *rand.Rand) blas64.General {
-	t := randomGeneral(n, n, stride, rnd)
+func randomSchurCanonical(n, stride int, rnd *rand.Rand) (t blas64.General, wr, wi []float64) {
+	t = randomGeneral(n, n, stride, rnd)
 	// Zero out the lower triangle.
 	for i := 0; i < t.Rows; i++ {
 		for j := 0; j < i; j++ {
@@ -141,23 +141,29 @@ func randomSchurCanonical(n, stride int, rnd *rand.Rand) blas64.General {
 	}
 	// Randomly create 2×2 diagonal blocks.
 	for i := 0; i < t.Rows; {
+		r := t.Data[i*t.Stride+i]
 		if i == t.Rows-1 || rnd.Float64() < 0.5 {
 			// 1×1 block.
+			wr = append(wr, r)
+			wi = append(wi, 0)
 			i++
 			continue
 		}
 		// 2×2 block.
 		// Diagonal elements equal.
-		t.Data[(i+1)*t.Stride+i+1] = t.Data[i*t.Stride+i]
+		t.Data[(i+1)*t.Stride+i+1] = r
 		// Off-diagonal elements of opposite sign.
 		c := rnd.NormFloat64()
 		if math.Signbit(c) == math.Signbit(t.Data[i*t.Stride+i+1]) {
 			c *= -1
 		}
 		t.Data[(i+1)*t.Stride+i] = c
+		wr = append(wr, r, r)
+		c = math.Sqrt(-t.Data[i*t.Stride+i+1] * c)
+		wi = append(wi, c, -c)
 		i += 2
 	}
-	return t
+	return t, wr, wi
 }
 
 // blockedUpperTriGeneral returns a normal random, general matrix in the form
