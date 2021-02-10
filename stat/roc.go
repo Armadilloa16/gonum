@@ -4,11 +4,6 @@
 
 package stat
 
-import (
-	"math"
-	"sort"
-)
-
 // ROC returns paired false positive rate (FPR) and true positive rate
 // (TPR) values corresponding to cutoff points on the receiver operator
 // characteristic (ROC) curve obtained when y is treated as a binary
@@ -36,72 +31,31 @@ import (
 //
 // More details about ROC curves are available at
 // https://en.wikipedia.org/wiki/Receiver_operating_characteristic
-func ROC(cutoffs, y []float64, classes []bool, weights []float64) (tpr, fpr, thresh []float64) {
-	if len(y) != len(classes) {
+func ROC(classes []bool, weights []float64) (tpr, fpr []float64) {
+	if weights != nil && len(classes) != len(weights) {
 		panic("stat: slice length mismatch")
 	}
-	if weights != nil && len(y) != len(weights) {
-		panic("stat: slice length mismatch")
-	}
-	if !sort.Float64sAreSorted(y) {
-		panic("stat: input must be sorted ascending")
-	}
-	if !sort.Float64sAreSorted(cutoffs) {
-		panic("stat: cutoff values must be sorted ascending")
-	}
-	if len(y) == 0 {
-		return nil, nil, nil
-	}
-	if len(cutoffs) == 0 {
-		if cutoffs == nil || cap(cutoffs) < len(y)+1 {
-			cutoffs = make([]float64, len(y)+1)
-		} else {
-			cutoffs = cutoffs[:len(y)+1]
-		}
-		// Choose all possible cutoffs for unique values in y.
-		bin := 0
-		cutoffs[bin] = y[0]
-		for i, u := range y[1:] {
-			if u == y[i] {
-				continue
-			}
-			bin++
-			cutoffs[bin] = u
-		}
-		cutoffs[bin+1] = math.Inf(1)
-		cutoffs = cutoffs[:bin+2]
-	} else {
-		// Don't mutate the provided cutoffs.
-		tmp := cutoffs
-		cutoffs = make([]float64, len(cutoffs))
-		copy(cutoffs, tmp)
+	if len(classes) == 0 {
+		return nil, nil
 	}
 
-	tpr = make([]float64, len(cutoffs))
-	fpr = make([]float64, len(cutoffs))
-	var bin int
+	tpr = make([]float64, len(classes) + 1)
+	fpr = make([]float64, len(classes) + 1)
 	var nPos, nNeg float64
 	for i, u := range classes {
-		// Update the bin until it matches the next y value
-		// skipping empty bins.
-		for bin < len(cutoffs)-1 && y[i] >= cutoffs[bin] {
-			bin++
-			tpr[bin] = tpr[bin-1]
-			fpr[bin] = fpr[bin-1]
-		}
-		posWeight, negWeight := 1.0, 0.0
+		tpr[i+1] = tpr[i]
+		fpr[i+1] = fpr[i]
+
+		w := 1.0
 		if weights != nil {
-			posWeight = weights[i]
+			w = weights[i]
 		}
-		if !u {
-			posWeight, negWeight = negWeight, posWeight
-		}
-		nPos += posWeight
-		nNeg += negWeight
-		// Count false negatives (in tpr) and true negatives (in fpr).
-		if y[i] < cutoffs[bin] {
-			tpr[bin] += posWeight
-			fpr[bin] += negWeight
+		if u {
+			nPos += w
+			tpr[i+1] += w
+		} else {
+			nNeg += w
+			fpr[i+1] += w
 		}
 	}
 
@@ -110,7 +64,7 @@ func ROC(cutoffs, y []float64, classes []bool, weights []float64) (tpr, fpr, thr
 	// Convert negative counts to TPR and FPR.
 	// Bins beyond the maximum value in y are skipped
 	// leaving these fpr and tpr elements as zero.
-	for i := range tpr[:bin+1] {
+	for i := range tpr {
 		// Prevent fused float operations by
 		// making explicit float64 conversions.
 		tpr[i] = 1 - float64(tpr[i]*invPos)
@@ -120,9 +74,6 @@ func ROC(cutoffs, y []float64, classes []bool, weights []float64) (tpr, fpr, thr
 		tpr[i], tpr[j] = tpr[j], tpr[i]
 		fpr[i], fpr[j] = fpr[j], fpr[i]
 	}
-	for i, j := 0, len(cutoffs)-1; i < j; i, j = i+1, j-1 {
-		cutoffs[i], cutoffs[j] = cutoffs[j], cutoffs[i]
-	}
 
-	return tpr, fpr, cutoffs
+	return tpr, fpr
 }
